@@ -236,7 +236,7 @@ func (s *Session) dialQUIC(ctx context.Context, addr string, tlsConf *tls.Config
 
 	// Handle proxy if configured
 	if s.ProxyDialer != nil {
-		return s.dialQUICViaProxy(ctx, udpAddr, tlsConf, quicConf)
+		return s.dialQUICViaProxy(ctx, addr, udpAddr, tlsConf, quicConf)
 	}
 
 	// Create UDP connection
@@ -271,8 +271,8 @@ func (s *Session) dialQUIC(ctx context.Context, addr string, tlsConf *tls.Config
 }
 
 // dialQUICViaProxy establishes a QUIC connection through a proxy
-func (s *Session) dialQUICViaProxy(ctx context.Context, remoteAddr *net.UDPAddr, tlsConf *tls.Config, quicConf *quic.Config) (*quic.Conn, error) {
-	return s.dialQUICViaSocks5(ctx, remoteAddr, tlsConf, quicConf)
+func (s *Session) dialQUICViaProxy(ctx context.Context, hostAddr string, remoteAddr *net.UDPAddr, tlsConf *tls.Config, quicConf *quic.Config) (*quic.Conn, error) {
+	return s.dialQUICViaSocks5(ctx, hostAddr, remoteAddr, tlsConf, quicConf)
 }
 
 // ApplyHTTP3 applies HTTP3 settings to the session from a fingerprint.

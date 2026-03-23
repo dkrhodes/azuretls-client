@@ -564,8 +564,10 @@ func (c *SOCKS5UDPConn) monitorControlConnection() {
 	}
 }
 
-// dialQUICViaSocks5 establishes a QUIC connection through SOCKS5 proxy
-func (s *Session) dialQUICViaSocks5(ctx context.Context, remoteAddr *net.UDPAddr, tlsConf *tls.Config, quicConf *quic.Config) (*quic.Conn, error) {
+// dialQUICViaSocks5 establishes a QUIC connection through SOCKS5 proxy.
+// hostAddr is the original "host:port" (may contain a hostname for proxy-side DNS).
+// remoteAddr is the resolved UDP address needed by the QUIC layer.
+func (s *Session) dialQUICViaSocks5(ctx context.Context, hostAddr string, remoteAddr *net.UDPAddr, tlsConf *tls.Config, quicConf *quic.Config) (*quic.Conn, error) {
 	if s.IsChainProxy() {
 		return nil, errors.New("QUIC over SOCKS5 is not supported with chained proxies")
 	}
@@ -589,13 +591,15 @@ func (s *Session) dialQUICViaSocks5(ctx context.Context, remoteAddr *net.UDPAddr
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	socks5Conn, err := dialer.DialUDP(ctx, "udp", remoteAddr.String())
+	// Use the original hostAddr so UDP headers carry the hostname (ATYP_DOMAIN)
+	// instead of the resolved IP, letting the proxy do DNS resolution.
+	socks5Conn, err := dialer.DialUDP(ctx, "udp", hostAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish SOCKS5 UDP connection: %w", err)
 	}
 
-	// Test the connection first
-	_, err = socks5Conn.WriteTo([]byte("probe"), remoteAddr.String())
+	// Test the connection first — use hostAddr so probe also uses ATYP_DOMAIN
+	_, err = socks5Conn.WriteTo([]byte("probe"), hostAddr)
 	if err != nil {
 		socks5Conn.Close()
 		return nil, fmt.Errorf("SOCKS5 probe packet failed: %w", err)
@@ -605,6 +609,7 @@ func (s *Session) dialQUICViaSocks5(ctx context.Context, remoteAddr *net.UDPAddr
 	packetConn := &socks5PacketConn{
 		conn:       socks5Conn,
 		remoteAddr: remoteAddr,
+		hostAddr:   hostAddr,
 	}
 
 	transport := &quic.UTransport{
@@ -638,6 +643,7 @@ func (s *Session) dialQUICViaSocks5(ctx context.Context, remoteAddr *net.UDPAddr
 type socks5PacketConn struct {
 	conn       *SOCKS5UDPConn
 	remoteAddr *net.UDPAddr
+	hostAddr   string // original "host:port" with hostname for ATYP_DOMAIN
 }
 
 func (c *socks5PacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
@@ -656,12 +662,7 @@ func (c *socks5PacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) 
 }
 
 func (c *socks5PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	udpAddr, ok := addr.(*net.UDPAddr)
-	if !ok {
-		return 0, errors.New("invalid address type")
-	}
-
-	return c.conn.WriteTo(p, udpAddr.String())
+	return c.conn.WriteTo(p, c.hostAddr)
 }
 
 func (c *socks5PacketConn) Close() error {
