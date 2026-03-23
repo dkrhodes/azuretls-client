@@ -331,7 +331,7 @@ func (d *SOCKS5UDPDialer) readAddress(conn net.Conn) (*net.UDPAddr, error) {
 	}
 	port := binary.BigEndian.Uint16(portBytes)
 
-	return net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", host, port))
+	return net.ResolveUDPAddr("udp", net.JoinHostPort(host, fmt.Sprintf("%d", port)))
 }
 
 // Write sends data through the SOCKS5 UDP relay
@@ -482,7 +482,7 @@ func (c *SOCKS5UDPConn) parseUDPPacket(packet []byte) (data []byte, fromAddr str
 	port := binary.BigEndian.Uint16(packet[offset : offset+2])
 	offset += 2
 
-	fromAddr = fmt.Sprintf("%s:%d", host, port)
+	fromAddr = net.JoinHostPort(host, fmt.Sprintf("%d", port))
 	data = packet[offset:]
 
 	return data, fromAddr, nil
